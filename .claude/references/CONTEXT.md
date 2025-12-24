@@ -39,7 +39,7 @@ This potential repository would represent **Stage 2 (NLP Processing Service)** o
 - Connects entities and events across stories
 
 **Stage 6: Timeline Generation Service**
-- Summarizes timelines using DeepSeek R1
+- Summarizes timelines and storing
 - Caches in Redis for performance
 
 **Stage 7: API Service**
