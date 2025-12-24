@@ -1,0 +1,339 @@
+# =============================================================================
+# Stage 4 Clustering Service - Configuration
+# =============================================================================
+# This YAML file controls clustering algorithms, parameters, and behavior
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Service Configuration
+# -----------------------------------------------------------------------------
+service:
+  name: "stage4-clustering"
+  version: "1.0.0"
+  environment: "production"  # development, staging, production
+
+# -----------------------------------------------------------------------------
+# Clustering Configuration
+# -----------------------------------------------------------------------------
+clustering:
+  # Default algorithm to use
+  default_algorithm: "hdbscan"  # hdbscan, kmeans, agglomerative
+
+  # Algorithm-specific parameters
+  algorithms:
+    hdbscan:
+      min_cluster_size: 5
+      min_samples: 3
+      cluster_selection_epsilon: 0.0
+      metric: "euclidean"
+      cluster_selection_method: "eom"  # eom or leaf
+      allow_single_cluster: false
+
+    kmeans:
+      n_clusters: 50
+      n_init: 10
+      max_iter: 300
+      algorithm: "auto"  # auto, full, elkan
+      random_state: 42
+
+    agglomerative:
+      n_clusters: null  # null = use distance_threshold
+      distance_threshold: 0.5
+      linkage: "ward"  # ward, complete, average, single
+      affinity: "euclidean"
+
+  # Temporal clustering
+  temporal_clustering:
+    enabled: true
+    decay_factor: 7  # days - controls temporal decay weighting
+    max_temporal_gap: 30  # days - max gap within cluster
+    use_temporal_windows: true
+    window_size: 14  # days - sliding window size
+
+  # Metadata-aware clustering
+  metadata_filtering:
+    enabled: true
+    filter_by_domain: true
+    filter_by_event_type: true
+    filter_by_entity_type: true
+
+  # Clustering quality thresholds
+  quality:
+    min_cluster_size: 3  # Minimum members per cluster
+    min_similarity: 0.7  # Minimum avg intra-cluster similarity
+    max_outlier_ratio: 0.1  # Max % of unclustered items
+
+  # Multi-level clustering
+  levels:
+    document:
+      enabled: true
+      algorithm: "hdbscan"
+      min_cluster_size: 5
+    event:
+      enabled: true
+      algorithm: "hdbscan"
+      min_cluster_size: 5
+    entity:
+      enabled: true
+      algorithm: "agglomerative"
+      distance_threshold: 0.3
+    storyline:
+      enabled: true
+      algorithm: "kmeans"
+      n_clusters: 20
+
+# -----------------------------------------------------------------------------
+# FAISS Configuration
+# -----------------------------------------------------------------------------
+faiss:
+  # Use GPU acceleration (requires NVIDIA GPU + FAISS-GPU)
+  use_gpu: true
+
+  # Path to Stage 3 vector indices
+  indices_path: "/shared/stage3/data/vector_indices"
+
+  # Index loading behavior
+  load_on_startup: false  # Load indices lazily on first request
+  cache_indices: true  # Keep indices in memory
+
+  # GPU memory management
+  gpu_memory_fraction: 0.8  # Use 80% of GPU memory
+
+# -----------------------------------------------------------------------------
+# Storage Configuration
+# -----------------------------------------------------------------------------
+storage:
+  # Enabled storage backends
+  enabled_backends:
+    - "postgresql"
+    - "jsonl"
+
+  # PostgreSQL storage
+  postgresql:
+    enabled: true
+    table_prefix: "clustering_"
+    batch_size: 1000  # Bulk insert size
+
+  # JSONL storage
+  jsonl:
+    enabled: true
+    output_dir: "data/clusters"
+    file_pattern: "clusters_{embedding_type}_{timestamp}.jsonl"
+    pretty_print: false
+
+  # Redis cache (for cluster lookups)
+  redis_cache:
+    enabled: true
+    ttl: 3600  # seconds (1 hour)
+    prefix: "cluster:"
+
+# -----------------------------------------------------------------------------
+# Batch Processing Configuration
+# -----------------------------------------------------------------------------
+batch:
+  # Celery worker settings
+  worker:
+    concurrency: 22
+    prefetch_multiplier: 1
+    max_tasks_per_child: 50
+
+  # Batch job settings
+  job:
+    default_chunk_size: 1000  # Items per batch
+    max_chunk_size: 5000
+    checkpoint_interval: 100  # Save checkpoint every N items
+
+  # Queue management
+  queue:
+    name: "clustering"
+    priority_levels: 3  # 0=low, 1=normal, 2=high
+
+# -----------------------------------------------------------------------------
+# Job Lifecycle Configuration
+# -----------------------------------------------------------------------------
+job_lifecycle:
+  # Job queue
+  enable_job_queue: true
+  max_concurrent_jobs: 1  # GPU serialization
+  job_ttl_days: 7
+
+  # Checkpointing
+  enable_checkpoints: true
+  checkpoint_interval: 10
+  checkpoint_ttl_days: 7
+
+  # Resource management
+  enable_resource_management: true
+  idle_timeout_seconds: 300  # 5 minutes
+  gpu_memory_threshold_mb: 14000  # For 16GB GPU
+  enable_idle_mode: true
+
+  # Progressive persistence
+  enable_progressive_persistence: true
+  persistence_batch_size: 10  # Save every N clusters
+
+# -----------------------------------------------------------------------------
+# API Configuration
+# -----------------------------------------------------------------------------
+api:
+  # Server settings
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: false  # Enable for development
+
+  # CORS
+  cors:
+    enabled: true
+    allow_origins:
+      - "http://localhost:3000"
+      - "http://localhost:8080"
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    allow_headers: ["*"]
+
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    burst: 10
+
+  # Pagination
+  pagination:
+    default_limit: 50
+    max_limit: 1000
+
+# -----------------------------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------------------------
+logging:
+  # Log level
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+  # Format
+  format: "json"  # json or text
+  include_timestamp: true
+  include_correlation_id: true
+
+  # Output
+  console:
+    enabled: true
+    level: "INFO"
+
+  file:
+    enabled: true
+    path: "logs/clustering_service.log"
+    level: "INFO"
+    max_size_mb: 100
+    backup_count: 5
+    rotation: "time"  # time or size
+
+  # Structured logging fields
+  structured_fields:
+    - "stage"
+    - "service"
+    - "cluster_id"
+    - "job_id"
+    - "embedding_type"
+    - "algorithm"
+
+# -----------------------------------------------------------------------------
+# Monitoring & Observability
+# -----------------------------------------------------------------------------
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+
+  # Health checks
+  health_check:
+    enabled: true
+    path: "/health"
+    include_dependencies: true  # Check Stage 3, Redis, PostgreSQL
+
+  # Performance tracking
+  performance:
+    track_clustering_time: true
+    track_memory_usage: true
+    track_gpu_utilization: true
+
+# -----------------------------------------------------------------------------
+# Stage 3 Integration
+# -----------------------------------------------------------------------------
+stage3_integration:
+  # API endpoint
+  api_url: "http://embeddings-orchestrator:8000"
+
+  # Health check
+  health_check_interval: 60  # seconds
+  health_check_timeout: 10  # seconds
+
+  # Retry policy
+  retry:
+    max_attempts: 3
+    backoff_factor: 2
+    max_backoff: 60
+
+# -----------------------------------------------------------------------------
+# Domain Configuration (from Stage 2/3)
+# -----------------------------------------------------------------------------
+domains:
+  - "diplomatic_relations"
+  - "military_operations"
+  - "economic_activity"
+  - "political_events"
+  - "legal_judicial"
+  - "health_medical"
+  - "environmental"
+  - "technology_science"
+  - "cultural_social"
+  - "sports_entertainment"
+  - "infrastructure_development"
+  - "general_news"
+
+# -----------------------------------------------------------------------------
+# Event Types (from Stage 2/3)
+# -----------------------------------------------------------------------------
+event_types:
+  # ACE 2005 types
+  - "contact_meet"
+  - "contact_phone"
+  - "conflict_attack"
+  - "conflict_demonstrate"
+  - "movement_transport"
+  - "transaction_transfer"
+  - "personnel_elect"
+  - "personnel_start_position"
+  - "personnel_end_position"
+  - "justice_arrest"
+  - "justice_charge"
+  - "justice_convict"
+
+  # Custom types
+  - "policy_change"
+  - "economic_indicator"
+  - "natural_disaster"
+  - "technology_release"
+  - "treaty_agreement"
+  - "election"
+  - "protest"
+  - "legislation"
+
+# -----------------------------------------------------------------------------
+# Entity Types (from Stage 2/3)
+# -----------------------------------------------------------------------------
+entity_types:
+  - "PER"  # Person
+  - "ORG"  # Organization
+  - "LOC"  # Location
+  - "GPE"  # Geopolitical Entity
+  - "DATE"  # Date
+  - "TIME"  # Time
+  - "MONEY"  # Monetary value
+  - "MISC"  # Miscellaneous
+  - "EVENT"  # Event name
+
+# =============================================================================
+# End of Configuration
+# =============================================================================

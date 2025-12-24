@@ -1,0 +1,315 @@
+version: '3.9'
+
+# =============================================================================
+# STAGE 4: CLUSTERING SERVICE - INFRASTRUCTURE INTEGRATION
+# =============================================================================
+# This file connects Stage 4 to the centralized Storytelling Platform
+# infrastructure. It MUST be used for production/staging deployments.
+# =============================================================================
+
+networks:
+  storytelling:
+    external: true
+    name: storytelling
+
+services:
+  # ===========================================================================
+  # ORCHESTRATOR SERVICE (FastAPI)
+  # ===========================================================================
+  orchestrator-service:
+    container_name: clustering-orchestrator
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: stage4-clustering-orchestrator:latest
+    networks:
+      - storytelling
+    environment:
+      # -------------------------------------------------------------------------
+      # Service Configuration
+      # -------------------------------------------------------------------------
+      - SERVICE_NAME=stage4-clustering
+      - ENVIRONMENT=production
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # -------------------------------------------------------------------------
+      # Infrastructure Services
+      # -------------------------------------------------------------------------
+      # Redis Broker (Celery)
+      - REDIS_HOST=redis-broker
+      - REDIS_PORT=6379
+      - REDIS_DB=6  # Stage 4: (4-1)*2 = 6
+
+      # Redis Cache
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - REDIS_CACHE_DB=7  # Stage 4: (4-1)*2+1 = 7
+
+      # PostgreSQL
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=stage4_clustering
+      - POSTGRES_USER=stage4_user
+      - POSTGRES_PASSWORD=${STAGE4_POSTGRES_PASSWORD}
+
+      # Celery
+      - CELERY_BROKER_URL=redis://redis-broker:6379/6
+      - CELERY_RESULT_BACKEND=redis://redis-cache:6379/7
+
+      # -------------------------------------------------------------------------
+      # Stage 3 Integration (Upstream Dependency)
+      # -------------------------------------------------------------------------
+      - STAGE3_API_URL=http://embeddings-orchestrator:8000
+      - STAGE3_INDICES_PATH=/shared/stage3/data/vector_indices
+
+      # -------------------------------------------------------------------------
+      # GPU Configuration
+      # -------------------------------------------------------------------------
+      - CUDA_VISIBLE_DEVICES=0
+      - FAISS_USE_GPU=true
+      - GPU_MEMORY_FRACTION=0.8
+
+      # -------------------------------------------------------------------------
+      # Observability
+      # -------------------------------------------------------------------------
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_SERVICE_NAME=stage4-clustering-orchestrator
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+
+      # API Configuration
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_WORKERS=4
+
+    volumes:
+      # Mount Stage 3 indices (read-only)
+      - ../stage3_embedding_service/data/vector_indices:/shared/stage3/data/vector_indices:ro
+
+      # Stage 4 data directories
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+
+    deploy:
+      resources:
+        limits:
+          cpus: '15'
+          memory: 40G
+        reservations:
+          cpus: '8'
+          memory: 20G
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    labels:
+      # Stage identification (REQUIRED for Prometheus)
+      - "stage=4"
+
+      # Service type (REQUIRED for Prometheus)
+      - "service=orchestrator"
+
+      # Project grouping (REQUIRED)
+      - "com.docker.compose.project=stage4-clustering"
+
+      # Optional metadata
+      - "version=1.0.0"
+      - "maintainer=nlp-team"
+
+    restart: unless-stopped
+
+    # NO ports: directive - Traefik handles all routing
+    # Access via: http://localhost/api/v1/clustering/*
+
+  # ===========================================================================
+  # CELERY WORKER (Batch Processing)
+  # ===========================================================================
+  celery-worker:
+    container_name: clustering-celery-worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: stage4-clustering-worker:latest
+    command: >
+      celery -A src.api.celery_worker:celery_app worker
+      --loglevel=info
+      --concurrency=22
+      --max-tasks-per-child=50
+      --prefetch-multiplier=1
+    networks:
+      - storytelling
+    environment:
+      # -------------------------------------------------------------------------
+      # Service Configuration
+      # -------------------------------------------------------------------------
+      - SERVICE_NAME=stage4-clustering-worker
+      - ENVIRONMENT=production
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # -------------------------------------------------------------------------
+      # Infrastructure Services (same as orchestrator)
+      # -------------------------------------------------------------------------
+      - REDIS_HOST=redis-broker
+      - REDIS_PORT=6379
+      - REDIS_DB=6
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - REDIS_CACHE_DB=7
+
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=stage4_clustering
+      - POSTGRES_USER=stage4_user
+      - POSTGRES_PASSWORD=${STAGE4_POSTGRES_PASSWORD}
+
+      - CELERY_BROKER_URL=redis://redis-broker:6379/6
+      - CELERY_RESULT_BACKEND=redis://redis-cache:6379/7
+      - CELERY_WORKER_CONCURRENCY=22
+      - CELERY_WORKER_PREFETCH_MULTIPLIER=1
+      - CELERY_WORKER_MAX_TASKS_PER_CHILD=50
+
+      # -------------------------------------------------------------------------
+      # Stage 3 Integration
+      # -------------------------------------------------------------------------
+      - STAGE3_API_URL=http://embeddings-orchestrator:8000
+      - STAGE3_INDICES_PATH=/shared/stage3/data/vector_indices
+
+      # -------------------------------------------------------------------------
+      # GPU Configuration
+      # -------------------------------------------------------------------------
+      - CUDA_VISIBLE_DEVICES=0
+      - FAISS_USE_GPU=true
+      - GPU_MEMORY_FRACTION=0.8
+
+      # -------------------------------------------------------------------------
+      # Clustering Configuration
+      # -------------------------------------------------------------------------
+      - DEFAULT_ALGORITHM=hdbscan
+      - MIN_CLUSTER_SIZE=5
+      - MIN_SAMPLES=3
+
+      # -------------------------------------------------------------------------
+      # Observability
+      # -------------------------------------------------------------------------
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_SERVICE_NAME=stage4-clustering-worker
+
+    volumes:
+      # Mount Stage 3 indices (read-only)
+      - ../stage3_embedding_service/data/vector_indices:/shared/stage3/data/vector_indices:ro
+
+      # Stage 4 data directories
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+
+    deploy:
+      resources:
+        limits:
+          cpus: '22'
+          memory: 100G
+        reservations:
+          cpus: '12'
+          memory: 50G
+        # GPU access (CRITICAL for FAISS-GPU)
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.api.celery_worker:celery_app inspect ping || exit 1"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 120s
+
+    labels:
+      - "stage=4"
+      - "service=celery-worker"
+      - "com.docker.compose.project=stage4-clustering"
+      - "version=1.0.0"
+
+    restart: unless-stopped
+
+    depends_on:
+      orchestrator-service:
+        condition: service_healthy
+
+  # ===========================================================================
+  # CELERY BEAT (Periodic Tasks)
+  # ===========================================================================
+  celery-beat:
+    container_name: clustering-celery-beat
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: stage4-clustering-beat:latest
+    command: >
+      celery -A src.api.celery_worker:celery_app beat
+      --loglevel=info
+    networks:
+      - storytelling
+    environment:
+      - SERVICE_NAME=stage4-clustering-beat
+      - ENVIRONMENT=production
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      - REDIS_HOST=redis-broker
+      - REDIS_PORT=6379
+      - REDIS_DB=6
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - REDIS_CACHE_DB=7
+
+      - CELERY_BROKER_URL=redis://redis-broker:6379/6
+      - CELERY_RESULT_BACKEND=redis://redis-cache:6379/7
+
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=stage4_clustering
+      - POSTGRES_USER=stage4_user
+      - POSTGRES_PASSWORD=${STAGE4_POSTGRES_PASSWORD}
+
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+    labels:
+      - "stage=4"
+      - "service=celery-beat"
+      - "com.docker.compose.project=stage4-clustering"
+
+    restart: unless-stopped
+
+    depends_on:
+      orchestrator-service:
+        condition: service_healthy
+
+# =============================================================================
+# IMPORTANT NOTES
+# =============================================================================
+# 1. NO port mappings - Traefik handles all routing
+# 2. Access via: http://localhost/api/v1/clustering/*
+# 3. Must register route in ../infrastructure/traefik/dynamic.yml
+# 4. Ensure STAGE4_POSTGRES_PASSWORD is set in .env
+# 5. Verify Stage 3 is running before starting Stage 4
+# =============================================================================
