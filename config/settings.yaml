@@ -87,10 +87,10 @@ clustering:
 # -----------------------------------------------------------------------------
 faiss:
   # Use GPU acceleration (requires NVIDIA GPU + FAISS-GPU)
-  use_gpu: true
+  use_gpu: false  # Disable for testing (enable in production with GPU)
 
   # Path to Stage 3 vector indices
-  indices_path: "/shared/stage3/data/vector_indices"
+  indices_path: "data/vector_indices"  # Local path for testing
 
   # Index loading behavior
   load_on_startup: false  # Load indices lazily on first request
@@ -274,6 +274,36 @@ stage3_integration:
     max_attempts: 3
     backoff_factor: 2
     max_backoff: 60
+
+# -----------------------------------------------------------------------------
+# Event Streaming & Webhooks
+# -----------------------------------------------------------------------------
+event_streaming:
+  # Enable event publishing
+  enabled: true
+
+  # Redis Stream configuration
+  redis_stream_name: "stage4:clustering:events"
+  redis_stream_maxlen: 10000  # Keep last 10K events
+
+  # Webhook URLs (for external integrations)
+  webhook_urls: []
+    # - "http://webhook-receiver:8080/clustering-events"
+    # - "https://your-service.com/webhooks/clustering"
+
+  # Event types to publish
+  publish_events:
+    - "job.created"
+    - "job.started"
+    - "job.progress"
+    - "job.completed"
+    - "job.failed"
+    - "job.paused"
+    - "job.resumed"
+    - "job.canceled"
+
+  # Progress event throttling (avoid spam)
+  progress_throttle_seconds: 5  # Only publish progress every N seconds
 
 # -----------------------------------------------------------------------------
 # Domain Configuration (from Stage 2/3)
