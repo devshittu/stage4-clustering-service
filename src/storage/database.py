@@ -100,7 +100,7 @@ class ClusteringJob(Base):
 
     # Configuration
     config = Column(JSONB, nullable=False)  # Algorithm parameters
-    metadata = Column(JSONB, nullable=True)  # Custom metadata
+    meta_info = Column(JSONB, nullable=True)  # Custom metadata (renamed to avoid SQLAlchemy reserved word)
 
     # Metrics
     total_items = Column(Integer, nullable=True)
@@ -159,7 +159,7 @@ class ClusteringJob(Base):
             "status": self.status,
             "progress": self.progress,
             "config": self.config,
-            "metadata": self.metadata,
+            "metadata": self.meta_info,  # Map back to 'metadata' for API compatibility
             "total_items": self.total_items,
             "processed_items": self.processed_items,
             "num_clusters": self.num_clusters,
@@ -228,7 +228,7 @@ class Cluster(Base):
     entity_types = Column(ARRAY(String), nullable=True)
 
     # Custom Metadata
-    metadata = Column(JSONB, nullable=True)
+    meta_info = Column(JSONB, nullable=True)  # Renamed to avoid SQLAlchemy reserved word
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -279,7 +279,7 @@ class Cluster(Base):
             "domains": self.domains,
             "event_types": self.event_types,
             "entity_types": self.entity_types,
-            "metadata": self.metadata,
+            "metadata": self.meta_info,  # Map back to 'metadata' for API compatibility
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -319,7 +319,7 @@ class ClusterMember(Base):
     similarity_score = Column(Float, nullable=True)  # Cosine similarity
 
     # Member Metadata
-    metadata = Column(JSONB, nullable=True)
+    meta_info = Column(JSONB, nullable=True)  # Renamed to avoid SQLAlchemy reserved word
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -350,7 +350,7 @@ class ClusterMember(Base):
             "document_id": self.document_id,
             "distance_to_centroid": self.distance_to_centroid,
             "similarity_score": self.similarity_score,
-            "metadata": self.metadata,
+            "metadata": self.meta_info,  # Map back to 'metadata' for API compatibility
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
