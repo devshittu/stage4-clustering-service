@@ -98,13 +98,13 @@ async def startup_event():
     # Configure CORS
     cors_config = config.get_section("api").get("cors", {})
     if cors_config.get("enabled", True):
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_config.get("allow_origins", ["*"]),
-            allow_credentials=True,
-            allow_methods=cors_config.get("allow_methods", ["*"]),
-            allow_headers=cors_config.get("allow_headers", ["*"]),
-        )
+    #         app.add_middleware(
+    #             CORSMiddleware,
+    #             allow_origins=cors_config.get("allow_origins", ["*"]),
+    #             allow_credentials=True,
+    #             allow_methods=cors_config.get("allow_methods", ["*"]),
+    #             allow_headers=cors_config.get("allow_headers", ["*"]),
+    #         )
         logger.info("CORS middleware configured")
 
     logger.info("Stage 4 Clustering Service started successfully")
