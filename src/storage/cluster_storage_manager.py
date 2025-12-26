@@ -37,8 +37,8 @@ from src.schemas.data_models import (
     JobStatus,
     EmbeddingType,
     ClusterAlgorithm,
-    ClusterInfo,
-    ClusterQualityMetrics,
+    Cluster as ClusterInfo,  # Use Cluster model
+    # ClusterQualityMetrics,  # Not defined yet
     ClusterMember as ClusterMemberModel,
 )
 from src.utils.error_handling import (
