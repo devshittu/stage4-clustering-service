@@ -7,11 +7,15 @@ celery[redis]==5.3.4
 python-multipart==0.0.6
 
 # Clustering Algorithms
-faiss-gpu==1.7.4
+# FAISS: GPU version preferred, CPU version as fallback
+# Note: faiss-gpu and faiss-cpu cannot coexist, install one or the other
+# The code automatically detects and uses GPU if available, otherwise falls back to CPU
+faiss-cpu==1.7.4  # Fallback for environments without GPU support
+# faiss-gpu==1.7.2  # Uncomment for GPU support (requires CUDA 11+)
 hdbscan==0.8.33
 scikit-learn==1.3.2
 scipy==1.11.4
-numpy==1.26.2
+numpy>=1.24.0,<2.0.0  # FAISS 1.7.x requires numpy <2.0
 
 # Data Handling
 pandas==2.1.4
@@ -19,7 +23,7 @@ orjson==3.9.10
 python-dateutil==2.8.2
 
 # Storage & Caching
-redis==5.0.1
+redis==4.6.0  # Compatible with celery[redis]==5.3.4 (<5.0.0)
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.23
 alembic==1.13.0
@@ -39,6 +43,7 @@ opentelemetry-exporter-otlp==1.21.0
 httpx==0.25.2
 aiohttp==3.9.1
 aiofiles==23.2.1
+requests==2.31.0  # For Stage 3 client
 
 # Utilities
 click==8.1.7
@@ -65,4 +70,4 @@ pylint==3.0.3
 
 # Security
 pip-audit==2.6.1
-safety==2.3.5
+# safety==2.3.5  # Removed due to packaging dependency conflict
