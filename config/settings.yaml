@@ -33,7 +33,7 @@ clustering:
       n_clusters: 50
       n_init: 10
       max_iter: 300
-      algorithm: "auto"  # auto, full, elkan
+      algorithm: "lloyd"  # lloyd or elkan (auto deprecated in sklearn 1.3+)
       random_state: 42
 
     agglomerative:
