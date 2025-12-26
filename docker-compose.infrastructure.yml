@@ -219,11 +219,11 @@ services:
         reservations:
           cpus: '12'
           memory: 50G
-        # GPU access (CRITICAL for FAISS-GPU)
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
+          devices:
+            # GPU access (CRITICAL for FAISS-GPU)
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
     healthcheck:
       test: ["CMD-SHELL", "celery -A src.api.celery_worker:celery_app inspect ping || exit 1"]
