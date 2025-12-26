@@ -191,24 +191,34 @@ class ClusteringEngine:
 
     def validate_clustering_config(
         self,
-        algorithm: str,
-        params: Dict[str, Any],
-    ) -> Dict[str, str]:
+        algorithm: Any,  # Can be str or ClusteringConfig
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, str]]:
         """
         Validate clustering configuration.
 
         Args:
-            algorithm: Algorithm name
-            params: Algorithm parameters
+            algorithm: Algorithm name (str) or ClusteringConfig object
+            params: Algorithm parameters (optional if algorithm is ClusteringConfig)
 
         Returns:
-            Dictionary of validation errors (empty if valid)
+            Dictionary of validation errors (empty if valid), or None if no errors
         """
+        from src.core.base_clustering import ClusteringConfig
+
+        # Handle ClusteringConfig object
+        if isinstance(algorithm, ClusteringConfig):
+            config = algorithm
+            algorithm = config.algorithm_name
+            params = config.params
+        elif params is None:
+            raise ValueError("params is required when algorithm is a string")
+
         errors = {}
 
         if algorithm not in self.ALGORITHMS:
             errors["algorithm"] = f"Unsupported algorithm '{algorithm}'"
-            return errors
+            return errors if errors else None
 
         # Algorithm-specific validation
         if algorithm == "hdbscan":
@@ -239,4 +249,4 @@ class ClusteringEngine:
             if n_clusters is not None and n_clusters < 2:
                 errors["n_clusters"] = "Must be >= 2 or None"
 
-        return errors
+        return errors if errors else None
