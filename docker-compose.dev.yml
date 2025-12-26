@@ -1,0 +1,82 @@
+version: '3.9'
+
+# =============================================================================
+# DEVELOPMENT MODE - HOT RELOADING
+# =============================================================================
+# Usage: docker compose -f docker-compose.infrastructure.yml -f docker-compose.dev.yml up
+# This file adds source code mounting for hot-reloading during development
+# =============================================================================
+
+services:
+  orchestrator-service:
+    build:
+      target: development
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+      - WATCHFILES_FORCE_POLLING=true
+    volumes:
+      # Mount source code for hot-reloading
+      - ./src:/app/src:rw
+      - ./config:/app/config:rw
+      - ./cli.py:/app/cli.py:rw
+      # Keep data mounts from base config
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # Mount Stage 3 indices (read-only)
+      - ../stage3_embedding_service/data/vector_indices:/shared/stage3/data/vector_indices:ro
+    command: >
+      uvicorn src.api.orchestrator:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/src
+      --log-level debug
+
+  celery-worker:
+    build:
+      target: development
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+      - WATCHFILES_FORCE_POLLING=true
+    volumes:
+      # Mount source code for hot-reloading
+      - ./src:/app/src:rw
+      - ./config:/app/config:rw
+      # Keep data mounts from base config
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # Mount Stage 3 indices (read-only)
+      - ../stage3_embedding_service/data/vector_indices:/shared/stage3/data/vector_indices:ro
+    command: >
+      watchfiles
+      "celery -A src.api.celery_worker:celery_app worker --loglevel=debug --concurrency=4 --max-tasks-per-child=10"
+      src/
+
+  celery-beat:
+    build:
+      target: development
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount source code for hot-reloading
+      - ./src:/app/src:rw
+      - ./config:/app/config:rw
+      - ./logs:/app/logs
+    command: >
+      celery -A src.api.celery_worker:celery_app beat
+      --loglevel=debug
+
+# =============================================================================
+# NOTES
+# =============================================================================
+# - Source code changes trigger automatic reloading
+# - Reduced concurrency (4) for development to save resources
+# - Debug logging enabled
+# - PYTHONUNBUFFERED ensures immediate log output
+# =============================================================================
