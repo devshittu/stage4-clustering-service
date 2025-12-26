@@ -441,3 +441,34 @@ class JobManager:
         data = json.dumps(job_dict)
 
         self.redis.set(key, data, ex=86400 * 30)  # 30 day TTL
+
+
+def get_redis_client(decode_responses: bool = True) -> redis.Redis:
+    """
+    Get Redis client for job management.
+
+    Args:
+        decode_responses: Whether to decode responses
+
+    Returns:
+        Redis client instance
+    """
+    from src.utils.redis_client import get_broker_redis_client
+
+    return get_broker_redis_client(decode_responses=decode_responses)
+
+
+def get_job_manager(redis_client: Optional[redis.Redis] = None) -> JobManager:
+    """
+    Factory function to get job manager.
+
+    Args:
+        redis_client: Redis client (optional, will create if None)
+
+    Returns:
+        JobManager instance
+    """
+    if redis_client is None:
+        redis_client = get_redis_client(decode_responses=True)
+
+    return JobManager(redis_client=redis_client)
