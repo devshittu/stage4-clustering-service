@@ -63,7 +63,7 @@ class FAISSLoader:
         self.use_gpu = use_gpu if use_gpu is not None else settings.faiss.use_gpu
 
         # Index cache
-        self._indices: Dict[str, faiss.Index] = {}
+        self._indices: Dict[str, Any] = {}  # Dict[str, faiss.Index] but faiss may not be imported
         self._metadata: Dict[str, List[Dict[str, Any]]] = {}
         self._loaded: Dict[str, bool] = {}
 
@@ -230,7 +230,7 @@ class FAISSLoader:
 
     def _search_with_filters(
         self,
-        index: faiss.Index,
+        index: Any,  # faiss.Index but may not be imported
         metadata: List[Dict[str, Any]],
         query_vectors: np.ndarray,
         k: int,
