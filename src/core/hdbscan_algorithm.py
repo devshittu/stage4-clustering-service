@@ -72,6 +72,10 @@ class HDBSCANAlgorithm(BaseClusteringAlgorithm):
         """
         logger.info(f"Starting HDBSCAN clustering on {len(vectors)} vectors")
 
+        # Validate input
+        if len(vectors) == 0:
+            raise ValueError("Cannot cluster empty vector array")
+
         # Apply metadata filters if configured
         filtered_vectors, filter_indices = self._apply_metadata_filters(vectors, metadata)
 
