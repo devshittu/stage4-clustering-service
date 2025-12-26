@@ -238,6 +238,21 @@ class EventPublisher:
                 logger.error(f"Failed to publish to webhook {webhook_url}: {e}")
 
 
+def get_redis_client(decode_responses: bool = False) -> redis.Redis:
+    """
+    Get Redis client for event publishing.
+
+    Args:
+        decode_responses: Whether to decode responses
+
+    Returns:
+        Redis client instance
+    """
+    from src.utils.redis_client import get_broker_redis_client
+
+    return get_broker_redis_client(decode_responses=decode_responses)
+
+
 def get_event_publisher(
     redis_client: Optional[redis.Redis] = None,
 ) -> EventPublisher:
@@ -265,8 +280,7 @@ def get_event_publisher(
 
     # Use provided client or create new one
     if redis_client is None and event_config.get("enabled", True):
-        redis_url = config.get("celery.broker_url", "redis://redis-broker:6379/6")
-        redis_client = redis.from_url(redis_url, decode_responses=False)
+        redis_client = get_redis_client(decode_responses=False)
 
     return EventPublisher(
         redis_client=redis_client,
