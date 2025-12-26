@@ -119,6 +119,7 @@ logs/
 *.tmp
 *.temp
 temp/
+.temp/
 tmp/
 .collate/
 
