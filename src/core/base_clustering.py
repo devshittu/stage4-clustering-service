@@ -41,6 +41,24 @@ class ClusteringResult:
         self.centroids = centroids
         self.cluster_probabilities = cluster_probabilities
 
+    @property
+    def labels(self) -> np.ndarray:
+        """Alias for cluster_labels for backward compatibility."""
+        return self.cluster_labels
+
+    @property
+    def probabilities(self) -> Optional[np.ndarray]:
+        """Alias for cluster_probabilities for backward compatibility."""
+        return self.cluster_probabilities
+
+    @property
+    def cluster_centroids(self) -> Optional[Dict[int, np.ndarray]]:
+        """Return centroids as dict mapping cluster_id -> centroid_vector."""
+        if self.centroids is None:
+            return None
+        # Convert array of centroids to dict
+        return {i: self.centroids[i] for i in range(len(self.centroids))}
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
