@@ -19,17 +19,20 @@ from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import numpy as np
 
-try:
-    import faiss
-    FAISS_AVAILABLE = True
-except ImportError:
-    FAISS_AVAILABLE = False
-    logging.warning("FAISS not available. Install with: pip install faiss-gpu or faiss-cpu")
-
 from src.config.settings_loader import get_settings
 from src.schemas.data_models import EmbeddingType
+from src.utils.faiss_utils import (
+    get_faiss,
+    is_faiss_available,
+    is_gpu_available,
+    get_gpu_resources,
+    move_index_to_gpu,
+    log_faiss_info,
+)
 
 logger = logging.getLogger(__name__)
+
+FAISS_AVAILABLE = is_faiss_available()
 
 
 # =============================================================================
@@ -75,14 +78,18 @@ class FAISSLoader:
 
     def _initialize_gpu(self) -> None:
         """Initialize GPU resources if available."""
+        if not is_gpu_available():
+            logger.warning("GPU requested but not available. Falling back to CPU.")
+            self.use_gpu = False
+            return
+
         try:
-            import torch
-            if torch.cuda.is_available():
-                self._gpu_resources = faiss.StandardGpuResources()
-                logger.info("FAISS GPU resources initialized")
-            else:
-                logger.warning("GPU requested but CUDA not available. Falling back to CPU.")
+            self._gpu_resources = get_gpu_resources()
+            if self._gpu_resources is None:
+                logger.warning("Failed to get GPU resources. Falling back to CPU.")
                 self.use_gpu = False
+            else:
+                logger.info("FAISS GPU resources initialized")
         except Exception as e:
             logger.warning(f"Failed to initialize GPU resources: {e}. Falling back to CPU.")
             self.use_gpu = False
@@ -117,12 +124,13 @@ class FAISSLoader:
 
             # Load FAISS index
             logger.info(f"Loading FAISS index from {index_path}")
+            faiss = get_faiss()
             index = faiss.read_index(str(index_path))
 
             # Move to GPU if enabled
             if self.use_gpu and self._gpu_resources:
                 logger.info(f"Moving index to GPU: {type_key}")
-                index = faiss.index_cpu_to_gpu(self._gpu_resources, 0, index)
+                index = move_index_to_gpu(index, gpu_id=0)
 
             self._indices[type_key] = index
 
