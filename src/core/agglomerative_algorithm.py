@@ -44,17 +44,9 @@ class AgglomerativeAlgorithm(BaseClusteringAlgorithm):
         self.n_clusters = config.params.get("n_clusters", None)
         self.distance_threshold = config.params.get("distance_threshold", None)
         self.linkage = config.params.get("linkage", "ward")
-        self.affinity = config.params.get("affinity", "euclidean")
+        # In sklearn >= 1.2, affinity was renamed to metric
+        self.metric = config.params.get("metric", config.params.get("affinity", "euclidean"))
         self.compute_full_tree = config.params.get("compute_full_tree", "auto")
-
-        # Validate parameters
-        if self.n_clusters is None and self.distance_threshold is None:
-            # Default to distance_threshold if neither is specified
-            self.distance_threshold = 0.5
-            logger.warning(
-                "Neither n_clusters nor distance_threshold specified, "
-                "defaulting to distance_threshold=0.5"
-            )
 
         if self.n_clusters is not None and self.distance_threshold is not None:
             logger.warning(
@@ -85,6 +77,16 @@ class AgglomerativeAlgorithm(BaseClusteringAlgorithm):
         """
         logger.info(f"Starting Agglomerative clustering on {len(vectors)} vectors")
 
+        # Validate parameters
+        if self.n_clusters is None and self.distance_threshold is None:
+            raise ValueError(
+                "Either n_clusters or distance_threshold must be specified"
+            )
+
+        # Validate input
+        if len(vectors) == 0:
+            raise ValueError("Cannot cluster empty vector array")
+
         # Apply metadata filters if configured
         filtered_vectors, filter_indices = self._apply_metadata_filters(vectors, metadata)
 
@@ -98,9 +100,9 @@ class AgglomerativeAlgorithm(BaseClusteringAlgorithm):
             )
 
         # Check dataset size (Agglomerative is O(n³), warn for large datasets)
-        if len(filtered_vectors) > 10000:
+        if len(filtered_vectors) > 5000:
             logger.warning(
-                f"Agglomerative clustering on {len(filtered_vectors)} vectors "
+                f"Agglomerative clustering on large dataset ({len(filtered_vectors)} vectors) "
                 "may be slow and memory-intensive. Consider using K-Means or HDBSCAN."
             )
 
@@ -124,7 +126,7 @@ class AgglomerativeAlgorithm(BaseClusteringAlgorithm):
             n_clusters=actual_n_clusters,
             distance_threshold=self.distance_threshold,
             linkage=self.linkage,
-            affinity=self.affinity,
+            metric=self.metric,
             compute_full_tree=self.compute_full_tree,
         )
 
@@ -175,10 +177,12 @@ class AgglomerativeAlgorithm(BaseClusteringAlgorithm):
                     )
 
             # Convert distances to probabilities
-            max_dist = np.max(distances[distances > 0])
-            if max_dist > 0:
-                cluster_probabilities = np.exp(-distances / max_dist)
-                cluster_probabilities[cluster_labels == -1] = 0.0
+            positive_distances = distances[distances > 0]
+            if len(positive_distances) > 0:
+                max_dist = np.max(positive_distances)
+                if max_dist > 0:
+                    cluster_probabilities = np.exp(-distances / max_dist)
+                    cluster_probabilities[cluster_labels == -1] = 0.0
 
         return ClusteringResult(
             cluster_labels=cluster_labels,
