@@ -44,7 +44,7 @@ class KMeansAlgorithm(BaseClusteringAlgorithm):
         self.n_clusters = config.params.get("n_clusters", 50)
         self.n_init = config.params.get("n_init", 10)
         self.max_iter = config.params.get("max_iter", 300)
-        self.algorithm = config.params.get("algorithm", "auto")
+        self.algorithm = config.params.get("algorithm", "lloyd")  # Changed from "auto" (deprecated in sklearn 1.3+)
         self.random_state = config.params.get("random_state", 42)
         self.use_minibatch = config.params.get("use_minibatch", False)
         self.batch_size = config.params.get("batch_size", 1024)
