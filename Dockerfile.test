@@ -1,0 +1,44 @@
+# Dockerfile for running tests in Docker environment
+# Ensures tests run in consistent environment matching production
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements-simple.txt .
+
+# Install Python dependencies for testing
+RUN pip install --no-cache-dir -r requirements-simple.txt
+
+# Install test dependencies
+RUN pip install --no-cache-dir \
+    pytest==7.4.3 \
+    pytest-cov==4.1.0 \
+    pytest-asyncio==0.21.1 \
+    pytest-mock==3.12.0 \
+    httpx==0.25.2
+
+# Copy source code
+COPY src/ src/
+COPY tests/ tests/
+COPY pytest.ini .
+COPY config/ config/
+
+# Set environment variables for testing
+ENV TESTING=true
+ENV LOG_LEVEL=DEBUG
+ENV PYTHONPATH=/app
+
+# Create test data directories
+RUN mkdir -p data/vector_indices data/clusters logs .temp
+
+# Run tests by default
+CMD ["pytest", "tests/", "-v", "--cov=src", "--cov-report=term-missing", "--cov-report=html"]
