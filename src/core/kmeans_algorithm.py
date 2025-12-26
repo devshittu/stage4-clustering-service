@@ -72,6 +72,10 @@ class KMeansAlgorithm(BaseClusteringAlgorithm):
         """
         logger.info(f"Starting K-Means clustering on {len(vectors)} vectors")
 
+        # Validate input
+        if len(vectors) == 0:
+            raise ValueError("Cannot cluster empty vector array")
+
         # Apply metadata filters if configured
         filtered_vectors, filter_indices = self._apply_metadata_filters(vectors, metadata)
 
@@ -163,10 +167,12 @@ class KMeansAlgorithm(BaseClusteringAlgorithm):
 
             # Convert distances to probabilities (inverse exponential)
             # Higher distance = lower probability
-            max_dist = np.max(distances[distances > 0])
-            if max_dist > 0:
-                cluster_probabilities = np.exp(-distances / max_dist)
-                cluster_probabilities[cluster_labels == -1] = 0.0
+            positive_distances = distances[distances > 0]
+            if len(positive_distances) > 0:
+                max_dist = np.max(positive_distances)
+                if max_dist > 0:
+                    cluster_probabilities = np.exp(-distances / max_dist)
+                    cluster_probabilities[cluster_labels == -1] = 0.0
 
         return ClusteringResult(
             cluster_labels=cluster_labels,
