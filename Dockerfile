@@ -48,7 +48,12 @@ WORKDIR /app
 FROM base AS dependencies
 
 # Copy requirements file
-COPY requirements.txt .
+COPY requirements-simple.txt requirements.txt
+
+# Install FAISS-GPU first (with fallback to CPU)
+RUN pip install --no-cache-dir faiss-gpu==1.7.2 || \
+    pip install --no-cache-dir faiss-cpu==1.7.4 || \
+    echo "WARNING: FAISS installation failed, will retry with requirements.txt"
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -109,7 +114,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir \
     ipython \
     jupyter \
-    debugpy
+    debugpy \
+    watchfiles
 
 # Switch back to appuser
 USER appuser
