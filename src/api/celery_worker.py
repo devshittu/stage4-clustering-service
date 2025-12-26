@@ -28,6 +28,14 @@ from src.utils.job_manager import JobManager
 from src.utils.resource_manager import get_resource_manager, cleanup_resources
 from src.core.clustering_engine import ClusteringEngine
 from src.utils.event_publisher import get_event_publisher, EventPublisher
+from src.utils.faiss_utils import (
+    get_faiss,
+    is_faiss_available,
+    is_gpu_available,
+    move_index_to_gpu,
+    log_faiss_info,
+    safe_get_vectors_from_index,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +54,14 @@ def on_worker_ready(sender, **kwargs):
     global job_manager, resource_manager, clustering_engine, event_publisher
 
     logger.info("Initializing Celery worker for clustering...")
+
+    # Log FAISS configuration
+    logger.info("Checking FAISS availability...")
+    if is_faiss_available():
+        log_faiss_info()
+    else:
+        logger.error("FAISS not available! Worker will not function properly.")
+        raise ImportError("FAISS not available. Install with: pip install faiss-gpu or faiss-cpu")
 
     # Initialize Redis client for job management
     redis_url = config.get("celery.broker_url", "redis://redis-broker:6379/6")
@@ -88,6 +104,42 @@ def on_worker_shutdown(sender, **kwargs):
         logger.error(f"Error during worker shutdown: {e}")
 
 
+def _ensure_worker_initialized():
+    """
+    Ensure worker services are initialized.
+
+    This is needed because Celery prefork workers don't inherit
+    global variables initialized in @worker_ready signal.
+    """
+    global job_manager, resource_manager, clustering_engine, event_publisher
+
+    if job_manager is None:
+        logger.info("Lazy-initializing worker services in forked process...")
+
+        # Initialize Redis client
+        redis_url = config.get("celery.broker_url", "redis://redis-broker:6379/6")
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+
+        # Initialize job manager
+        job_manager = JobManager(redis_client)
+
+        # Initialize resource manager
+        lifecycle_config = config.get_section("job_lifecycle")
+        resource_manager = get_resource_manager(
+            idle_timeout_seconds=lifecycle_config.get("idle_timeout_seconds", 300),
+            gpu_memory_threshold_mb=lifecycle_config.get("gpu_memory_threshold_mb", 14000),
+            enable_idle_mode=lifecycle_config.get("enable_idle_mode", True),
+        )
+
+        # Initialize clustering engine
+        clustering_engine = ClusteringEngine()
+
+        # Initialize event publisher
+        event_publisher = get_event_publisher(redis_client)
+
+        logger.info("Worker services initialized in forked process")
+
+
 class ClusteringTask(Task):
     """
     Base task class for clustering operations.
@@ -120,7 +172,7 @@ def _load_faiss_index(embedding_type: str) -> Tuple[Any, np.ndarray, List[str], 
         return faiss_indices[embedding_type]
 
     # Load from disk
-    import faiss
+    faiss = get_faiss()
 
     faiss_config = config.get_section("faiss")
     indices_path = faiss_config.get("indices_path", "/shared/stage3/data/vector_indices")
@@ -144,10 +196,11 @@ def _load_faiss_index(embedding_type: str) -> Tuple[Any, np.ndarray, List[str], 
     index = faiss.read_index(index_file)
 
     # Move to GPU if available
-    if use_gpu and faiss.get_num_gpus() > 0:
+    if use_gpu and is_gpu_available():
         logger.info(f"Moving {embedding_type} index to GPU")
-        res = faiss.StandardGpuResources()
-        index = faiss.index_cpu_to_gpu(res, 0, index)
+        index = move_index_to_gpu(index, gpu_id=0)
+    else:
+        logger.info(f"Using CPU for {embedding_type} index")
 
     # Load metadata (contains item IDs and rich metadata)
     # Support both JSON and pickle formats
@@ -155,10 +208,23 @@ def _load_faiss_index(embedding_type: str) -> Tuple[Any, np.ndarray, List[str], 
         import json
         with open(metadata_file, "r") as f:
             metadata_raw = json.load(f)
-            # Handle Stage 3 format: {"metadata_store": {...}, "id_map": {...}}
+            # Handle Stage 3 format: {"metadata_store": {...}, "id_map": {...}, "reverse_id_map": {...}}
             if isinstance(metadata_raw, dict) and "metadata_store" in metadata_raw:
-                # Convert to list format
-                metadata = list(metadata_raw["metadata_store"].values())
+                # Use reverse_id_map to properly map vector indices to metadata
+                metadata_store = metadata_raw["metadata_store"]
+                reverse_id_map = metadata_raw.get("reverse_id_map", {})
+
+                # Build metadata list in vector index order
+                metadata = []
+                for i in range(index.ntotal):
+                    # Get the metadata key for this vector index
+                    metadata_key = reverse_id_map.get(str(i))
+                    if metadata_key and metadata_key in metadata_store:
+                        metadata.append(metadata_store[metadata_key])
+                    else:
+                        # Fallback: use modulo to cycle through available metadata
+                        metadata_keys = list(metadata_store.keys())
+                        metadata.append(metadata_store[metadata_keys[i % len(metadata_keys)]])
             elif isinstance(metadata_raw, list):
                 metadata = metadata_raw
             else:
@@ -169,8 +235,7 @@ def _load_faiss_index(embedding_type: str) -> Tuple[Any, np.ndarray, List[str], 
             metadata = pickle.load(f)
 
     # Extract vectors from index
-    vectors = faiss.rev_swig_ptr(index.get_xb(), index.ntotal * index.d)
-    vectors = vectors.reshape(index.ntotal, index.d)
+    vectors = safe_get_vectors_from_index(index, index.ntotal, index.d)
 
     # Extract item IDs and metadata
     item_ids = [m.get("id", m.get("source_id", f"item_{i}")) for i, m in enumerate(metadata)]
@@ -412,6 +477,9 @@ def cluster_batch_task(
     logger.info(
         f"Job {job_id}: Starting clustering - {embedding_type} with {algorithm}"
     )
+
+    # Ensure worker services are initialized (needed for prefork workers)
+    _ensure_worker_initialized()
 
     # Get managers
     jm = job_manager

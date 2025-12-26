@@ -10,7 +10,7 @@ import json
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import redis
-import requests
+import httpx
 
 
 logger = logging.getLogger(__name__)
@@ -222,17 +222,17 @@ class EventPublisher:
         """Publish to webhooks (non-blocking)."""
         for webhook_url in self.webhook_urls:
             try:
-                # Async webhook call with timeout
-                requests.post(
-                    webhook_url,
-                    json=event,
-                    timeout=5,
-                    headers={"Content-Type": "application/json"},
-                )
+                # Webhook call with timeout
+                with httpx.Client(timeout=5.0) as client:
+                    client.post(
+                        webhook_url,
+                        json=event,
+                        headers={"Content-Type": "application/json"},
+                    )
 
                 logger.debug(f"Published event to webhook: {webhook_url}")
 
-            except requests.Timeout:
+            except httpx.TimeoutException:
                 logger.warning(f"Webhook timeout: {webhook_url}")
             except Exception as e:
                 logger.error(f"Failed to publish to webhook {webhook_url}: {e}")
@@ -255,7 +255,11 @@ def get_event_publisher(
     config = get_config()
 
     # Get stream configuration
-    event_config = config.get_section("event_streaming", {})
+    try:
+        event_config = config.get_section("event_streaming")
+    except (KeyError, AttributeError):
+        event_config = {}
+
     stream_name = event_config.get("redis_stream_name", "stage4:clustering:events")
     webhook_urls = event_config.get("webhook_urls", [])
 
