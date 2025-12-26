@@ -1,0 +1,103 @@
+version: '3.9'
+
+networks:
+  storytelling:
+    external: true
+    name: storytelling
+
+services:
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: clustering-test-runner
+    networks:
+      - storytelling
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./htmlcov:/app/htmlcov
+    environment:
+      - TESTING=true
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app
+      - REDIS_HOST=storytelling-redis-broker
+      - REDIS_PORT=6379
+      - REDIS_BROKER_DB=6
+      - REDIS_CACHE_DB=7
+      - POSTGRES_HOST=storytelling-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=stage4_clustering
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=changeme_admin_password
+    command: >
+      pytest tests/unit/ -v
+      --cov=src
+      --cov-report=html
+      --cov-report=term-missing
+      --cov-report=xml
+      -m "unit and not gpu"
+
+  test-integration:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: clustering-test-integration
+    networks:
+      - storytelling
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./htmlcov:/app/htmlcov
+    environment:
+      - TESTING=true
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app
+      - REDIS_HOST=storytelling-redis-broker
+      - REDIS_PORT=6379
+      - REDIS_BROKER_DB=6
+      - REDIS_CACHE_DB=7
+      - POSTGRES_HOST=storytelling-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=stage4_clustering
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=changeme_admin_password
+    command: >
+      pytest tests/integration/ -v
+      --cov=src
+      --cov-append
+      --cov-report=term-missing
+      -m "integration"
+
+  test-all:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: clustering-test-all
+    networks:
+      - storytelling
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./htmlcov:/app/htmlcov
+    environment:
+      - TESTING=true
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app
+      - REDIS_HOST=storytelling-redis-broker
+      - REDIS_PORT=6379
+      - REDIS_BROKER_DB=6
+      - REDIS_CACHE_DB=7
+      - POSTGRES_HOST=storytelling-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=stage4_clustering
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=changeme_admin_password
+    command: >
+      pytest tests/ -v
+      --cov=src
+      --cov-report=html
+      --cov-report=term-missing
+      --cov-report=xml
+      --cov-fail-under=80
+      -m "not gpu and not requires_stage3"
