@@ -156,9 +156,15 @@ class BaseClusteringAlgorithm(ABC):
         if not self.config.enable_temporal_weighting or dates is None:
             return vectors
 
+        # Check if dates array contains valid (non-None) values
+        valid_dates_mask = np.array([d is not None for d in dates])
+        if not valid_dates_mask.any():
+            # All dates are None, skip temporal weighting
+            return vectors
+
         # Calculate temporal weights using exponential decay
         # weight = exp(-|date - reference_date| / decay_factor)
-        reference_date = np.max(dates)  # Use most recent date as reference
+        reference_date = np.max(dates[valid_dates_mask])  # Use most recent valid date as reference
         time_diffs = np.abs(dates - reference_date)  # Days difference
 
         # Exponential decay
