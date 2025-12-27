@@ -28,36 +28,41 @@ def mock_redis_client():
 
 @pytest.fixture
 def mock_settings():
-    """Mock settings configuration."""
-    with patch("src.services.stage3_stream_consumer.settings") as mock_config:
+    """Mock configuration."""
+    with patch("src.services.stage3_stream_consumer.get_config") as mock_get_config:
+        mock_config = Mock()
+
         # Upstream automation config
-        upstream = Mock()
-        upstream.enabled = True
-        upstream.redis_consumer = Mock()
-        upstream.redis_consumer.stream_name = "stage3:embeddings:events"
-        upstream.redis_consumer.consumer_group = "stage4-test-consumers"
-        upstream.redis_consumer.consumer_name = "test-worker-1"
-        upstream.redis_consumer.block_ms = 1000
-        upstream.redis_consumer.count = 10
-        upstream.redis_consumer.trigger_events = ["embedding.job.completed"]
-        upstream.redis_consumer.retry = Mock()
-        upstream.redis_consumer.retry.max_attempts = 3
-        upstream.redis_consumer.retry.backoff_seconds = 1
+        upstream_automation = {
+            "enabled": True,
+            "redis_consumer": {
+                "stream_name": "stage3:embeddings:events",
+                "consumer_group": "stage4-test-consumers",
+                "consumer_name": "test-worker-1",
+                "block_ms": 1000,
+                "count": 10,
+                "trigger_events": ["embedding.job.completed"],
+                "retry": {
+                    "max_attempts": 3,
+                    "backoff_seconds": 1,
+                },
+            },
+            "auto_trigger": {
+                "embedding_types": ["document", "event", "entity", "storyline"],
+                "default_algorithm": "hdbscan",
+                "min_embeddings": 10,
+                "quality_threshold": 0.0,
+            },
+        }
 
-        # Auto-trigger config
-        upstream.auto_trigger = Mock()
-        upstream.auto_trigger.embedding_types = ["document", "event", "entity", "storyline"]
-        upstream.auto_trigger.default_algorithm = "hdbscan"
-        upstream.auto_trigger.min_embeddings = 10
-        upstream.auto_trigger.quality_threshold = 0.0
+        mock_config.get_section.return_value = upstream_automation
+        mock_config.get.side_effect = lambda key, default=None: {
+            "redis.broker_host": "localhost",
+            "redis.broker_port": 6379,
+            "redis.broker_db": 6,
+        }.get(key, default)
 
-        mock_config.upstream_automation = upstream
-
-        # Redis broker config
-        mock_config.redis_broker_host = "localhost"
-        mock_config.redis_broker_port = 6379
-        mock_config.redis_broker_db = 6
-
+        mock_get_config.return_value = mock_config
         yield mock_config
 
 
