@@ -35,22 +35,25 @@ class Stage5WebhookPublisher:
 
     def __init__(self):
         """Initialize the webhook publisher."""
-        self.config = settings.downstream_automation.webhook_publisher
+        config = get_config()
+        downstream_config = config.get_section("downstream_automation")
+        webhook_publisher = downstream_config.get("webhook_publisher", {})
 
         # Webhook URLs
-        self.webhook_urls = self.config.stage5_urls
-        self.enabled = self.config.enabled
+        self.enabled = webhook_publisher.get("enabled", True)
+        self.webhook_urls = webhook_publisher.get("stage5_urls", [])
 
         # Retry configuration
-        self.max_attempts = self.config.retry.max_attempts
-        self.backoff_seconds = self.config.retry.backoff_seconds
-        self.timeout_seconds = self.config.retry.timeout_seconds
+        retry_config = webhook_publisher.get("retry", {})
+        self.max_attempts = retry_config.get("max_attempts", 3)
+        self.backoff_seconds = retry_config.get("backoff_seconds", 5)
+        self.timeout_seconds = retry_config.get("timeout_seconds", 30)
 
         # Fail silently (don't raise errors if Stage 5 is unavailable)
-        self.fail_silently = self.config.fail_silently
+        self.fail_silently = webhook_publisher.get("fail_silently", True)
 
         # Auth token
-        self.auth_token = self.config.auth_token
+        self.auth_token = webhook_publisher.get("auth_token")
         if self.auth_token and self.auth_token.startswith("${"):
             # Environment variable not expanded
             self.auth_token = None
