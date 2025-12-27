@@ -592,7 +592,11 @@ def cluster_batch_task(
         # Mark job as complete
         jm.complete_job(job_id, success=True)
 
-        # Publish completion event
+        # Get output files (if saved)
+        output_file = results.get("output_file")
+        output_files = [output_file] if output_file else []
+
+        # Publish completion event (Redis stream)
         if ep:
             ep.publish_job_completed(
                 job_id=job_id,
@@ -600,6 +604,49 @@ def cluster_batch_task(
                 outliers=results["outliers"],
                 quality_metrics=quality_metrics,
                 processing_time_ms=results["processing_time_ms"],
+                output_files=output_files,
+                embedding_type=embedding_type,
+                algorithm=algorithm,
+                statistics={
+                    "total_items": len(cluster_labels) if "cluster_labels" in locals() else 0,
+                    "avg_cluster_size": n_clusters / len(cluster_labels) if n_clusters > 0 and "cluster_labels" in locals() else 0,
+                },
+            )
+
+        # Notify Stage 5 via webhook (downstream automation)
+        try:
+            import asyncio
+            from src.utils.stage5_webhook_publisher import publish_to_stage5
+
+            # Run webhook in async context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            webhook_success = loop.run_until_complete(
+                publish_to_stage5(
+                    job_id=job_id,
+                    embedding_type=embedding_type,
+                    algorithm=algorithm,
+                    clusters_created=n_clusters,
+                    outliers=results["outliers"],
+                    output_files=output_files,
+                    quality_metrics=quality_metrics,
+                    statistics={
+                        "processing_time_ms": results["processing_time_ms"],
+                    },
+                )
+            )
+            loop.close()
+
+            if webhook_success:
+                logger.info(f"Job {job_id}: Stage 5 webhook notification sent successfully")
+            else:
+                logger.warning(f"Job {job_id}: Stage 5 webhook notification failed (continuing)")
+
+        except Exception as webhook_error:
+            # Don't fail the job if webhook fails
+            logger.error(
+                f"Job {job_id}: Failed to send Stage 5 webhook: {webhook_error}",
+                exc_info=True,
             )
 
         logger.info(
