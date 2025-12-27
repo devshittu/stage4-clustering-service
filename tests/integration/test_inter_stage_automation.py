@@ -64,7 +64,7 @@ class TestUpstreamAutomation:
             }
             mock_cfg.get_section.return_value = upstream
 
-            with patch("src.api.orchestrator.run_clustering_batch") as mock_task:
+            with patch("src.api.orchestrator.cluster_batch_task") as mock_task:
                 mock_task.apply_async.return_value = Mock(id="triggered-task-123")
 
                 # Simulate Stage 3 webhook call
@@ -236,7 +236,7 @@ class TestPriorityQueueHandling:
             }
             mock_cfg.get_section.return_value = upstream
 
-            with patch("src.api.orchestrator.run_clustering_batch") as mock_task:
+            with patch("src.api.orchestrator.cluster_batch_task") as mock_task:
                 mock_task.apply_async.return_value = Mock(id="auto-task")
 
                 # Submit auto-triggered job via webhook
@@ -282,7 +282,7 @@ class TestEndToEndAutomation:
             }
             mock_cfg.get_section.return_value = upstream
 
-            with patch("src.api.orchestrator.run_clustering_batch") as mock_clustering_task:
+            with patch("src.api.orchestrator.cluster_batch_task") as mock_clustering_task:
                 # Mock clustering task completion
                 mock_task_result = Mock()
                 mock_task_result.id = "clustering-task-e2e-001"

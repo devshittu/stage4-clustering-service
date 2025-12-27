@@ -52,7 +52,7 @@ class TestStage3WebhookReceiver:
 
     def test_webhook_receiver_success(self, client, mock_config):
         """Test successful webhook reception."""
-        with patch("src.api.orchestrator.run_clustering_batch") as mock_task:
+        with patch("src.api.orchestrator.cluster_batch_task") as mock_task:
             mock_task.apply_async.return_value = Mock(id="celery-task-123")
 
             response = client.post(
@@ -213,7 +213,7 @@ class TestStage3WebhookReceiver:
             }
             mock_cfg.get_section.return_value = upstream
 
-            with patch("src.api.orchestrator.run_clustering_batch") as mock_task:
+            with patch("src.api.orchestrator.cluster_batch_task") as mock_task:
                 mock_task.apply_async.return_value = Mock(id="task-123")
 
                 # With correct token
@@ -451,7 +451,7 @@ class TestManualVsAutoJobPriority:
 
     def test_webhook_auto_trigger_uses_normal_priority(self, client, mock_config):
         """Test webhook auto-trigger uses priority=5."""
-        with patch("src.api.orchestrator.run_clustering_batch") as mock_task:
+        with patch("src.api.orchestrator.cluster_batch_task") as mock_task:
             mock_task.apply_async.return_value = Mock(id="task-123")
 
             response = client.post(
