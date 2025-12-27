@@ -276,6 +276,7 @@ async def create_batch_job(request: BatchJobRequest):
         )
 
         # Submit to Celery (non-blocking)
+        # HIGH PRIORITY (9) for manual API calls - processed before auto-triggered jobs
         celery_app.send_task(
             "tasks.cluster_batch_task",
             args=[
@@ -288,6 +289,7 @@ async def create_batch_job(request: BatchJobRequest):
                 request.checkpoint_interval,
             ],
             task_id=job_id,  # Use job_id as task_id for easy tracking
+            priority=9,  # HIGH priority for manual calls
         )
 
         logger.info(
@@ -634,6 +636,172 @@ async def search_clusters(request: ClusterSearchRequest):
         total_results=0,
         search_time_ms=0.0,
     )
+
+
+# =============================================================================
+# WEBHOOKS (Inter-Stage Communication)
+# =============================================================================
+
+
+@app.post("/webhooks/embeddings-completed", status_code=202)
+async def webhook_embeddings_completed(
+    event_type: str = Query(..., description="Event type from Stage 3"),
+    job_id: str = Query(..., description="Stage 3 job ID"),
+    embedding_type: str = Query(..., description="Embedding type"),
+    total_embeddings: int = Query(..., description="Total embeddings created"),
+    quality_score: Optional[float] = Query(None, description="Embedding quality"),
+    output_path: Optional[str] = Query(None, description="FAISS index path"),
+    auth_token: Optional[str] = Query(None, description="Optional auth token"),
+):
+    """
+    Webhook endpoint for Stage 3 embedding completion notifications.
+
+    Stage 3 calls this endpoint when embedding generation completes,
+    triggering automatic clustering in Stage 4.
+
+    Args:
+        event_type: Type of event (e.g., "embedding.job.completed")
+        job_id: Stage 3 job identifier
+        embedding_type: Type of embeddings (document/event/entity/storyline)
+        total_embeddings: Number of embeddings created
+        quality_score: Optional quality score (0-1)
+        output_path: Optional path to FAISS index file
+        auth_token: Optional authentication token
+
+    Returns:
+        202 Accepted with job submission details
+
+    Raises:
+        401: Unauthorized if auth token is invalid
+        400: Bad request if validation fails
+        503: Service unavailable if auto-trigger disabled
+    """
+    from src.api.celery_worker import run_clustering_batch
+
+    logger.info(
+        "stage3_webhook_received",
+        event_type=event_type,
+        job_id=job_id,
+        embedding_type=embedding_type,
+        total_embeddings=total_embeddings,
+    )
+
+    # Validate auth token if configured
+    expected_token = config.get_section("upstream_automation").get("webhook_receiver", {}).get("auth_token")
+    if expected_token and expected_token != "${STAGE4_WEBHOOK_SECRET}":
+        if not auth_token or auth_token != expected_token:
+            logger.warning("webhook_unauthorized", job_id=job_id)
+            raise HTTPException(status_code=401, detail="Unauthorized: Invalid auth token")
+
+    # Check if auto-trigger is enabled
+    auto_trigger_config = config.get_section("upstream_automation")
+    if not auto_trigger_config.get("enabled", False):
+        logger.warning("webhook_received_but_auto_trigger_disabled", job_id=job_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Auto-trigger disabled. Enable upstream_automation.enabled in settings",
+        )
+
+    # Check if webhook receiver is enabled
+    webhook_config = auto_trigger_config.get("webhook_receiver", {})
+    if not webhook_config.get("enabled", False):
+        logger.warning("webhook_received_but_receiver_disabled", job_id=job_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook receiver disabled. Enable upstream_automation.webhook_receiver.enabled",
+        )
+
+    # Validate embedding type
+    allowed_types = auto_trigger_config.get("auto_trigger", {}).get("embedding_types", [])
+    if embedding_type not in allowed_types:
+        logger.warning(
+            "embedding_type_not_allowed",
+            embedding_type=embedding_type,
+            allowed=allowed_types,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Embedding type '{embedding_type}' not allowed. Allowed: {allowed_types}",
+        )
+
+    # Check minimum embeddings threshold
+    min_embeddings = auto_trigger_config.get("auto_trigger", {}).get("min_embeddings", 0)
+    if total_embeddings < min_embeddings:
+        logger.warning(
+            "insufficient_embeddings",
+            total=total_embeddings,
+            minimum=min_embeddings,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient embeddings: {total_embeddings} < {min_embeddings}",
+        )
+
+    # Check quality threshold
+    quality_threshold = auto_trigger_config.get("auto_trigger", {}).get("quality_threshold", 0.0)
+    if quality_score is not None and quality_score < quality_threshold:
+        logger.warning(
+            "embedding_quality_too_low",
+            quality=quality_score,
+            threshold=quality_threshold,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Embedding quality too low: {quality_score} < {quality_threshold}",
+        )
+
+    # Trigger clustering job
+    try:
+        default_algorithm = auto_trigger_config.get("auto_trigger", {}).get("default_algorithm", "hdbscan")
+
+        job_config = {
+            "embedding_type": embedding_type,
+            "algorithm": default_algorithm,
+            "min_cluster_size": None,  # Use defaults
+            "metadata": {
+                "triggered_by": "stage3_webhook",
+                "stage3_job_id": job_id,
+                "auto_triggered": True,
+                "trigger_timestamp": datetime.utcnow().isoformat(),
+            },
+        }
+
+        # Submit Celery task
+        # NORMAL PRIORITY (5) for auto-triggered jobs - manual calls processed first
+        task = run_clustering_batch.apply_async(
+            kwargs=job_config,
+            queue="clustering",
+            priority=5,  # Lower priority than manual API calls
+        )
+
+        logger.info(
+            "clustering_job_triggered_via_webhook",
+            stage3_job_id=job_id,
+            task_id=task.id,
+            embedding_type=embedding_type,
+        )
+
+        return {
+            "status": "accepted",
+            "message": "Clustering job submitted successfully",
+            "stage4_task_id": task.id,
+            "stage3_job_id": job_id,
+            "embedding_type": embedding_type,
+            "algorithm": default_algorithm,
+            "triggered_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+    except Exception as e:
+        logger.error(
+            "webhook_job_submission_failed",
+            stage3_job_id=job_id,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to submit clustering job: {str(e)}",
+        )
 
 
 # =============================================================================
