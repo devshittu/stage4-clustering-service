@@ -57,28 +57,31 @@ class Stage3StreamConsumer:
         self.redis_client: Optional[redis.Redis] = None
         self.running = False
 
+        # Load configuration
+        config = get_config()
+        upstream_config = config.get_section("upstream_automation")
+
         # Configuration from settings
-        self.stream_name = settings.upstream_automation.redis_consumer.stream_name
-        self.consumer_group = settings.upstream_automation.redis_consumer.consumer_group
-        self.consumer_name = settings.upstream_automation.redis_consumer.consumer_name
-        self.block_ms = settings.upstream_automation.redis_consumer.block_ms
-        self.count = settings.upstream_automation.redis_consumer.count
-        self.trigger_events = settings.upstream_automation.redis_consumer.trigger_events
+        redis_consumer = upstream_config.get("redis_consumer", {})
+        self.stream_name = redis_consumer.get("stream_name", "stage3:embeddings:events")
+        self.consumer_group = redis_consumer.get("consumer_group", "stage4-clustering-consumers")
+        self.consumer_name = redis_consumer.get("consumer_name", "stage4-worker-1")
+        self.block_ms = redis_consumer.get("block_ms", 5000)
+        self.count = redis_consumer.get("count", 10)
+        self.trigger_events = redis_consumer.get("trigger_events", ["embedding.job.completed"])
 
         # Auto-trigger rules
-        self.auto_trigger_enabled = settings.upstream_automation.enabled
-        self.allowed_embedding_types = (
-            settings.upstream_automation.auto_trigger.embedding_types
-        )
-        self.default_algorithm = settings.upstream_automation.auto_trigger.default_algorithm
-        self.min_embeddings = settings.upstream_automation.auto_trigger.min_embeddings
-        self.quality_threshold = settings.upstream_automation.auto_trigger.quality_threshold
+        self.auto_trigger_enabled = upstream_config.get("enabled", True)
+        auto_trigger = upstream_config.get("auto_trigger", {})
+        self.allowed_embedding_types = auto_trigger.get("embedding_types", ["document", "event", "entity", "storyline"])
+        self.default_algorithm = auto_trigger.get("default_algorithm", "hdbscan")
+        self.min_embeddings = auto_trigger.get("min_embeddings", 10)
+        self.quality_threshold = auto_trigger.get("quality_threshold", 0.0)
 
         # Retry config
-        self.max_retry_attempts = settings.upstream_automation.redis_consumer.retry.max_attempts
-        self.retry_backoff = (
-            settings.upstream_automation.redis_consumer.retry.backoff_seconds
-        )
+        retry_config = redis_consumer.get("retry", {})
+        self.max_retry_attempts = retry_config.get("max_attempts", 3)
+        self.retry_backoff = retry_config.get("backoff_seconds", 5)
 
         # Statistics
         self.stats = {
@@ -96,10 +99,15 @@ class Stage3StreamConsumer:
             redis.RedisError: If connection fails
         """
         try:
+            config = get_config()
+            redis_host = config.get("redis.broker_host", "redis-broker")
+            redis_port = config.get("redis.broker_port", 6379)
+            redis_db = config.get("redis.broker_db", 6)
+
             self.redis_client = redis.Redis(
-                host=settings.redis_broker_host,
-                port=settings.redis_broker_port,
-                db=settings.redis_broker_db,
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
                 decode_responses=True,
             )
 
