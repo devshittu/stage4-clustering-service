@@ -50,8 +50,8 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=stage4_clustering
-      - POSTGRES_USER=stage4_user
-      - POSTGRES_PASSWORD=${STAGE4_POSTGRES_PASSWORD}
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=changeme_admin_password
 
       # Celery
       - CELERY_BROKER_URL=redis://redis-broker:6379/6
