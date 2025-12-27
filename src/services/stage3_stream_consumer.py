@@ -19,7 +19,7 @@ import structlog
 from pydantic import BaseModel, Field, ValidationError
 
 from src.api.celery_worker import cluster_batch_task
-from src.config.settings import settings
+from src.config.config import get_config
 
 logger = structlog.get_logger(__name__)
 
