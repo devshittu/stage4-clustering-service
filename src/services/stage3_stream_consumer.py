@@ -18,7 +18,7 @@ import redis
 import structlog
 from pydantic import BaseModel, Field, ValidationError
 
-from src.api.celery_worker import run_clustering_batch
+from src.api.celery_worker import cluster_batch_task
 from src.config.settings import settings
 
 logger = structlog.get_logger(__name__)
@@ -277,7 +277,7 @@ class Stage3StreamConsumer:
 
             # Submit Celery task (async)
             # NORMAL PRIORITY (5) for auto-triggered jobs - manual calls processed first
-            task = run_clustering_batch.apply_async(
+            task = cluster_batch_task.apply_async(
                 kwargs=job_config,
                 queue="clustering",
                 priority=5,  # Lower priority than manual API calls
