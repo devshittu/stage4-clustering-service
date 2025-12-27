@@ -13,7 +13,7 @@ from datetime import datetime
 import httpx
 import structlog
 
-from src.config.settings import settings
+from src.config.config import get_config
 
 logger = structlog.get_logger(__name__)
 
