@@ -108,9 +108,29 @@ class EventPublisher:
         outliers: int,
         quality_metrics: Dict[str, float],
         processing_time_ms: float,
+        output_files: Optional[List[str]] = None,
+        embedding_type: Optional[str] = None,
+        algorithm: Optional[str] = None,
+        statistics: Optional[Dict[str, Any]] = None,
+        sample_clusters: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ):
-        """Publish job completed event."""
+        """
+        Publish job completed event.
+
+        Args:
+            job_id: Clustering job ID
+            clusters_created: Number of clusters created
+            outliers: Number of outlier points
+            quality_metrics: Quality metrics (silhouette, etc.)
+            processing_time_ms: Total processing time
+            output_files: List of output file paths (JSONL, etc.)
+            embedding_type: Type of embeddings (document/event/entity/storyline)
+            algorithm: Clustering algorithm used
+            statistics: Additional statistics
+            sample_clusters: Sample of cluster data for preview
+            **kwargs: Additional metadata
+        """
         event = {
             "event_type": "job.completed",
             "job_id": job_id,
@@ -121,6 +141,27 @@ class EventPublisher:
             "timestamp": datetime.utcnow().isoformat() + "Z",
             **kwargs,
         }
+
+        # Add output files if provided (for Stage 5 consumption)
+        if output_files:
+            event["output_files"] = output_files
+
+        # Add embedding type if provided
+        if embedding_type:
+            event["embedding_type"] = embedding_type
+
+        # Add algorithm if provided
+        if algorithm:
+            event["algorithm"] = algorithm
+
+        # Add statistics if provided
+        if statistics:
+            event["statistics"] = statistics
+
+        # Add sample clusters if provided
+        if sample_clusters:
+            event["sample_clusters"] = sample_clusters
+
         self._publish(event)
 
     def publish_job_failed(
