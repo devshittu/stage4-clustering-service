@@ -264,7 +264,7 @@ class TestStage3StreamConsumer:
         mock_task = Mock()
         mock_task.id = "celery-task-uuid"
 
-        with patch("src.services.stage3_stream_consumer.run_clustering_batch") as mock_celery_task:
+        with patch("src.services.stage3_stream_consumer.cluster_batch_task") as mock_celery_task:
             mock_celery_task.apply_async.return_value = mock_task
 
             result = await consumer._trigger_clustering_job(stage3_event)
@@ -294,7 +294,7 @@ class TestStage3StreamConsumer:
             timestamp="2025-12-27T10:00:00Z",
         )
 
-        with patch("src.services.stage3_stream_consumer.run_clustering_batch") as mock_celery_task:
+        with patch("src.services.stage3_stream_consumer.cluster_batch_task") as mock_celery_task:
             mock_celery_task.apply_async.side_effect = Exception("Celery error")
 
             result = await consumer._trigger_clustering_job(stage3_event)

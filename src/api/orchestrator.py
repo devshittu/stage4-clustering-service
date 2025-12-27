@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import redis
 
 from src.api.celery_app import celery_app
+from src.api.celery_worker import cluster_batch_task
 from src.config.config import get_config
 from src.schemas.data_models import (
     BatchJobRequest,
@@ -768,7 +769,7 @@ async def webhook_embeddings_completed(
 
         # Submit Celery task
         # NORMAL PRIORITY (5) for auto-triggered jobs - manual calls processed first
-        task = run_clustering_batch.apply_async(
+        task = cluster_batch_task.apply_async(
             kwargs=job_config,
             queue="clustering",
             priority=5,  # Lower priority than manual API calls
