@@ -140,8 +140,8 @@ class Stage3StreamConsumer:
 
             logger.info(
                 "redis_consumer_connected",
-                host=settings.redis_broker_host,
-                db=settings.redis_broker_db,
+                host=redis_host,
+                db=redis_db,
                 stream=self.stream_name,
             )
 
