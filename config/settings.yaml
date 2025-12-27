@@ -306,6 +306,101 @@ event_streaming:
   progress_throttle_seconds: 5  # Only publish progress every N seconds
 
 # -----------------------------------------------------------------------------
+# Upstream Integration (Stage 3 → Stage 4 Automation)
+# -----------------------------------------------------------------------------
+upstream_automation:
+  # Enable automatic job triggering when Stage 3 completes
+  enabled: true
+
+  # Redis Stream Consumer Configuration
+  redis_consumer:
+    enabled: true
+    stream_name: "stage3:embeddings:events"  # Stage 3 publishes here
+    consumer_group: "stage4-clustering-consumers"
+    consumer_name: "clustering-worker-1"
+    block_ms: 5000  # Block for 5 seconds waiting for events
+    count: 10  # Read up to 10 events per batch
+
+    # Events to consume from Stage 3
+    trigger_events:
+      - "embedding.job.completed"
+      - "embedding.batch.completed"
+
+    # Retry policy for failed event processing
+    retry:
+      max_attempts: 3
+      backoff_seconds: 10
+
+  # Webhook Receiver Configuration
+  webhook_receiver:
+    enabled: true
+    endpoint_path: "/webhooks/embeddings-completed"
+    auth_token: "${STAGE4_WEBHOOK_SECRET}"  # Optional auth for security
+
+  # Auto-trigger settings
+  auto_trigger:
+    # Which embedding types to auto-cluster
+    embedding_types:
+      - "document"
+      - "event"
+      - "entity"
+      - "storyline"
+
+    # Default clustering algorithm when auto-triggered
+    default_algorithm: "hdbscan"
+
+    # Only auto-trigger if Stage 3 job meets criteria
+    min_embeddings: 10  # Minimum embeddings in job
+    quality_threshold: 0.0  # Minimum embedding quality (0-1)
+
+# -----------------------------------------------------------------------------
+# Downstream Integration (Stage 4 → Stage 5 Automation)
+# -----------------------------------------------------------------------------
+downstream_automation:
+  # Enable notifications to Stage 5 when clustering completes
+  enabled: true
+
+  # Redis Stream Publisher (already implemented, enhanced config)
+  redis_publisher:
+    enabled: true
+    # stream_name inherited from event_streaming.redis_stream_name
+
+    # Include output file paths in events
+    include_output_paths: true
+
+  # Webhook Publisher Configuration
+  webhook_publisher:
+    enabled: true
+
+    # Stage 5 webhook URLs (can be multiple for redundancy)
+    stage5_urls:
+      - "http://graph-orchestrator:8000/webhooks/clustering-completed"
+      # - "http://graph-orchestrator-backup:8000/webhooks/clustering-completed"
+
+    # Webhook retry policy
+    retry:
+      max_attempts: 3
+      backoff_seconds: 5
+      timeout_seconds: 10
+
+    # Fail gracefully if Stage 5 not available
+    fail_silently: true  # Don't block job completion if webhook fails
+
+    # Auth configuration
+    auth_token: "${STAGE5_WEBHOOK_SECRET}"  # Optional auth
+
+  # Event payload configuration
+  event_payload:
+    # Include cluster statistics in event
+    include_statistics: true
+
+    # Include sample clusters (first N clusters)
+    include_sample_clusters: 5
+
+    # Include quality metrics
+    include_quality_metrics: true
+
+# -----------------------------------------------------------------------------
 # Domain Configuration (from Stage 2/3)
 # -----------------------------------------------------------------------------
 domains:
