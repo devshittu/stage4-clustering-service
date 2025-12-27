@@ -61,12 +61,12 @@ check_infrastructure() {
 
     cd "$INFRASTRUCTURE_DIR"
 
-    # Check critical services
-    local services=("redis-broker" "redis-cache" "postgres" "traefik")
+    # Check critical services (with storytelling- prefix)
+    local services=("storytelling-redis-broker" "storytelling-redis-cache" "storytelling-postgres" "storytelling-traefik")
     local all_running=true
 
     for service in "${services[@]}"; do
-        if docker compose ps | grep -q "$service.*running"; then
+        if docker ps --format "{{.Names}}" | grep -q "^$service$"; then
             print_success "$service is running"
         else
             print_error "$service is not running"
