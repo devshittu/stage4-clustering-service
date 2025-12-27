@@ -58,6 +58,14 @@ celery_app.conf.update(
     worker_max_tasks_per_child=50,  # Restart worker after 50 tasks (prevent memory leaks)
     worker_disable_rate_limits=False,
 
+    # Priority queue support (manual calls priority=9, auto-triggered priority=5)
+    task_inherit_parent_priority=True,
+    broker_transport_options={
+        "priority_steps": list(range(10)),  # Support priorities 0-9
+        "sep": ":",
+        "queue_order_strategy": "priority",
+    },
+
     # Result backend
     result_expires=86400,  # Results expire after 24 hours
     result_persistent=True,  # Persist results to backend
